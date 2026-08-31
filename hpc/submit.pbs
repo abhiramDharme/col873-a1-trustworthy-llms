@@ -1,29 +1,50 @@
 #!/bin/bash
-# IITD HPC fallback (Skylake V100). Job name is required to be `default`.
 #PBS -N default
 #PBS -P vision.cse.spons
-#PBS -q standard
-#PBS -l select=1:ncpus=8:ngpus=1:mem=32gb:centos=skylake
-#PBS -l walltime=48:00:00
+#PBS -q scai_q
+#PBS -l select=1:ncpus=20:ngpus=1:mem=64gb:centos=amdepyc
+#PBS -l walltime=24:00:00
 #PBS -m n
+#PBS -o /scratch/cse/dual/cs5221139/col873_a1/logs/default.out
+#PBS -e /scratch/cse/dual/cs5221139/col873_a1/logs/default.err
 
-set -euo pipefail
-cd "${PBS_O_WORKDIR:-$HOME/COL873-A1}"
-echo "host=$(hostname) job=${PBS_JOBID:-local} date=$(date -Is)"
-source ~/.bashrc || true
-module load apps/anaconda/3EnvCreation 2>/dev/null || module load apps/anaconda/3 || true
-ENV="${A1_CONDA_ENV:-/scratch/cse/dual/cs5221139/envs/col873_a1}"
-if [[ -f "$ENV/bin/activate" ]]; then
-  # shellcheck disable=SC1090
-  source "$ENV/bin/activate"
-elif command -v conda >/dev/null 2>&1; then
-  conda activate "$ENV" 2>/dev/null || source activate "$ENV"
+set -eo pipefail
+cd /scratch/cse/dual/cs5221139/col873_a1
+mkdir -p logs adapters results .hf
+
+set +u
+# shellcheck disable=SC1090
+source "${HOME}/.bashrc" || true
+set -u
+if conda activate col873 2>/dev/null; then
+  echo "activated col873"
+else
+  conda activate col871
+  echo "activated col871 (col873 not found)"
 fi
-export A1_ROOT="${A1_ROOT:-$PWD}"
-export A1_DATA="${A1_DATA:-$PWD/data}"
-export A1_OUT="${A1_OUT:-/scratch/cse/dual/cs5221139/col873_a1}"
-export HF_HOME="${HF_HOME:-$A1_OUT/.hf}"
+
+export A1_ROOT="/scratch/cse/dual/cs5221139/col873_a1"
+export A1_DATA="${A1_ROOT}/data"
+export A1_OUT="${A1_ROOT}"
+export HF_HOME="${A1_ROOT}/.hf"
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
 export PYTHONUNBUFFERED=1
-mkdir -p "$A1_OUT"
+export TOKENIZERS_PARALLELISM=false
+export OMP_NUM_THREADS=1
+unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
+export no_proxy="*"
+
+echo "host=$(hostname) job=${PBS_JOBID:-} date=$(date -Is)"
+echo "python=$(which python)"
 nvidia-smi || true
-bash "$A1_ROOT/run_all.sh"
+python - <<'PY'
+import torch
+print("torch", torch.__version__, "cuda", torch.version.cuda)
+print("cuda_available", torch.cuda.is_available())
+if torch.cuda.is_available():
+    props = torch.cuda.get_device_properties(0)
+    print("gpu", torch.cuda.get_device_name(0), "cc", torch.cuda.get_device_capability(), "gb", round(props.total_memory / 1024**3, 1))
+PY
+
+bash "${A1_ROOT}/run_all.sh"

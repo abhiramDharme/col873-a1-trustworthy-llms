@@ -11,7 +11,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import torch
-from transformers import Trainer, TrainingArguments
+from transformers import Trainer
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -28,17 +28,23 @@ from lib.constants import (
     PII_LABELS_300K,
 )
 from lib.generate import generate_texts
-from lib.io_utils import read_jsonl, upsert_csv_row, verify_manifest
+from lib.io_utils import csv_has_complete_row, read_jsonl, upsert_csv_row, verify_manifest
 from lib.metrics import score_example
 from lib.model_util import (
     accumulation_steps,
+    amp_flags,
+    adapter_is_complete,
     attach_lora,
+    build_training_args,
+    choose_gen_batch_size,
     choose_train_batch_size,
+    latest_checkpoint,
     load_causal_lm,
     load_tokenizer,
     peak_gpu_gb,
     reset_peak_gpu,
     trainable_counts,
+    use_grad_checkpoint,
 )
 from lib.paths import data_dir, results_dir
 from lib.prompts import apply_prompt
@@ -75,7 +81,9 @@ def build_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def make_training_args(output_dir: Path, batch_size: int, accum: int, epochs: int, lr: float, seed: int, fp16: bool) -> TrainingArguments:
+def make_training_args(output_dir: Path, batch_size: int, accum: int, epochs: int, lr: float, seed: int) -> TrainingArguments:
+    fp16, bf16 = amp_flags()
+    workers = 4 if torch.cuda.is_available() else 0
     kwargs = dict(
         output_dir=str(output_dir / "trainer_state"),
         num_train_epochs=epochs,
@@ -86,29 +94,23 @@ def make_training_args(output_dir: Path, batch_size: int, accum: int, epochs: in
         lr_scheduler_type="cosine",
         warmup_ratio=SANITIZER_WARMUP,
         logging_steps=25,
-        save_strategy="epoch",
-        save_total_limit=1,
-        load_best_model_at_end=True,
-        metric_for_best_model="eval_loss",
-        greater_is_better=False,
+        save_strategy="steps",
+        save_steps=100,
+        load_best_model_at_end=False,
         fp16=fp16,
-        bf16=False,
-        gradient_checkpointing=True,
+        bf16=bf16,
+        gradient_checkpointing=use_grad_checkpoint(),
         report_to=[],
         seed=seed,
         data_seed=seed,
         remove_unused_columns=False,
-        dataloader_num_workers=0,
+        dataloader_num_workers=workers,
+        dataloader_pin_memory=torch.cuda.is_available(),
         max_grad_norm=1.0,
         optim="adamw_torch",
         eval_strategy="epoch",
     )
-    try:
-        return TrainingArguments(**kwargs)
-    except TypeError:
-        kwargs["evaluation_strategy"] = kwargs.pop("eval_strategy")
-        kwargs["optim"] = "adamw_torch"
-        return TrainingArguments(**kwargs)
+    return build_training_args(kwargs)
 
 
 def evaluate_val_entities(model, tokenizer, rows: list[dict], batch_size: int) -> tuple[float, float]:
@@ -186,11 +188,20 @@ def main() -> None:
     val_ds = CompletionSFTDataset(val_rows, tokenizer, args.max_seq_len)
     LOGGER.info("tokenized train=%s val=%s truncated=%s", len(train_ds), len(val_ds), train_ds.n_truncated)
 
-    adapter_ok = (args.output_dir / "adapter_config.json").is_file()
-    if args.skip_train and not adapter_ok:
+    adapter_ok = adapter_is_complete(args.output_dir)
+    resume_ckpt = latest_checkpoint(args.output_dir)
+    skip_train = args.skip_train or adapter_ok
+    if args.skip_train and not adapter_ok and resume_ckpt is None:
         raise FileNotFoundError(args.output_dir)
 
-    if not args.skip_train:
+    if skip_train and adapter_ok:
+        from lib.model_util import load_with_adapter
+
+        LOGGER.info("skip train; adapter already at %s", args.output_dir)
+        model = load_with_adapter(args.model, str(args.output_dir), quant=args.quant)
+        trainable, total, pct = trainable_counts(model)
+        wall = tps = final_loss = val_loss = peak = 0.0
+    else:
         reset_peak_gpu()
         model = load_causal_lm(args.model, quant=args.quant)
         model = attach_lora(model, modules, args.lora_r, args.lora_alpha, quant=args.quant)
@@ -198,6 +209,8 @@ def main() -> None:
         batch = choose_train_batch_size(args.quant)
         accum = accumulation_steps(batch, EFFECTIVE_BATCH)
         LOGGER.info("batch=%s accum=%s effective=%s", batch, accum, batch * accum)
+        if resume_ckpt is not None:
+            LOGGER.info("resume from %s", resume_ckpt)
         t0 = time.time()
         training_args = make_training_args(
             args.output_dir,
@@ -206,7 +219,6 @@ def main() -> None:
             args.epochs,
             args.lr,
             args.seed,
-            fp16=torch.cuda.is_available(),
         )
         trainer = Trainer(
             model=model,
@@ -215,7 +227,7 @@ def main() -> None:
             eval_dataset=val_ds,
             data_collator=PadCollator(tokenizer),
         )
-        train_out = trainer.train()
+        train_out = trainer.train(resume_from_checkpoint=str(resume_ckpt) if resume_ckpt else None)
         wall = time.time() - t0
         eval_out = trainer.evaluate()
         args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -227,14 +239,15 @@ def main() -> None:
         final_loss = float(train_out.metrics.get("train_loss", 0.0))
         val_loss = float(eval_out.get("eval_loss", 0.0))
         model = trainer.model
-    else:
-        from lib.model_util import load_with_adapter
 
-        model = load_with_adapter(args.model, str(args.output_dir), quant=args.quant)
-        trainable, total, pct = trainable_counts(model)
-        wall = tps = final_loss = val_loss = peak = 0.0
+    if csv_has_complete_row(results_csv, args.run_id):
+        LOGGER.info("skip val decode; %s already in %s", args.run_id, results_csv)
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        return
 
-    gen_bs = 8 if torch.cuda.is_available() else 1
+    gen_bs = choose_gen_batch_size()
     val_f1, val_leak = evaluate_val_entities(model, tokenizer, val_rows, gen_bs)
     row = {
         "run_id": args.run_id,

@@ -56,6 +56,19 @@ def verify_manifest(data_root: Path) -> None:
             raise ValueError(f"Row count mismatch for {item['file']}: {n_rows} != {item['rows']}")
 
 
+def csv_has_complete_row(path: Path, run_id: str, required: str = "val_entity_f1") -> bool:
+    if not path.is_file() or path.stat().st_size == 0:
+        return False
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        for row in csv.DictReader(handle):
+            if row.get("run_id") != str(run_id):
+                continue
+            value = (row.get(required) or "").strip()
+            if value:
+                return True
+    return False
+
+
 def upsert_csv_row(path: Path, fieldnames: list[str] | tuple[str, ...], row: dict[str, Any], key: str = "run_id") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     rows: list[dict[str, Any]] = []

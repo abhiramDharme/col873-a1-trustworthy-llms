@@ -16,7 +16,7 @@ from lib.constants import DEFAULT_SEED, PII_LABELS_300K, SANITIZER_MAX_NEW, SANI
 from lib.generate import generate_texts
 from lib.io_utils import iter_jsonl, read_jsonl, write_json, write_jsonl
 from lib.metrics import aggregate_reports, score_example
-from lib.model_util import load_tokenizer, load_with_adapter, choose_train_batch_size
+from lib.model_util import load_tokenizer, load_with_adapter, choose_gen_batch_size
 from lib.paths import data_dir, results_dir
 from lib.prompts import apply_prompt
 from lib.regex_baseline import RegexSanitizer
@@ -54,7 +54,7 @@ def run_finetuned(args, rows: list[dict], sources: list[str]) -> list[str]:
     adapter = args.adapter_path if args.system == "finetuned" and args.adapter_path else None
     model = load_with_adapter(args.base_model, adapter, quant=args.quant)
     prompts = [apply_prompt(tokenizer, text, add_generation_prompt=True) for text in sources]
-    bs = args.batch_size or (4 if torch.cuda.is_available() else 1)
+    bs = args.batch_size or choose_gen_batch_size()
     texts = generate_texts(model, tokenizer, prompts, max_new_tokens=SANITIZER_MAX_NEW, batch_size=bs)
     del model
     if torch.cuda.is_available():
@@ -95,6 +95,16 @@ def main() -> None:
         sources = [row["source_text"] for row in rows]
 
     LOGGER.info("system=%s n=%s ood=%s corpus=%s", args.system, len(rows), ood, corpus_mode)
+
+    pred_path = args.output_predictions or (results_dir() / "partB_predictions.jsonl")
+    report_path = args.report_file or (results_dir() / "partB_metrics.json")
+    if args.sanitize_corpus_out and args.sanitize_corpus_out.is_file():
+        LOGGER.info("skip corpus sanitize; %s exists", args.sanitize_corpus_out)
+        return
+    if not corpus_mode and pred_path.is_file() and report_path.is_file():
+        LOGGER.info("skip eval; %s and %s exist", pred_path, report_path)
+        return
+
     rule_spans: list[list[Span]] | None = None
     t0 = time.time()
     if args.system in {"regex", "presidio"}:

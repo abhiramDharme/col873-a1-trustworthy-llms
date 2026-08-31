@@ -30,7 +30,7 @@ from lib.constants import (
 from lib.generate import continuation_nll, generate_texts, sequence_nll
 from lib.io_utils import load_json, read_jsonl, write_json
 from lib.metrics import normalize_text
-from lib.model_util import load_tokenizer, load_with_adapter
+from lib.model_util import choose_gen_batch_size, load_tokenizer, load_with_adapter
 from lib.paths import data_dir, results_dir
 from lib.regex_baseline import EMAIL_RE, IPV4_RE, PHONE_RE, SSN_RE
 from lib.seed import seed_everything
@@ -114,7 +114,7 @@ def discoverable(model, tokenizer, docs: list[dict]) -> dict:
         tokenizer,
         prompts,
         max_new_tokens=VICTIM_MAX_NEW,
-        batch_size=8 if torch.cuda.is_available() else 1,
+        batch_size=choose_gen_batch_size(),
         do_sample=False,
     )
     for pred, gold, n_reps in zip(gens, golds, meta):
@@ -159,7 +159,7 @@ def untargeted(model, ref, tokenizer, corpus: list[dict], n_samples: int, seed: 
         tokenizer,
         prefixes,
         max_new_tokens=VICTIM_MAX_NEW,
-        batch_size=4 if torch.cuda.is_available() else 1,
+        batch_size=choose_gen_batch_size(),
         do_sample=True,
         temperature=1.0,
         top_k=40,
@@ -280,13 +280,13 @@ def targeted(model, tokenizer, rows: list[dict]) -> dict:
 
     def eval_split(subset: list[dict]) -> dict:
         prompts = [r["prompt"] for r in subset]
-        greedy = generate_texts(model, tokenizer, prompts, max_new_tokens=64, batch_size=8 if torch.cuda.is_available() else 1, do_sample=False)
+        greedy = generate_texts(model, tokenizer, prompts, max_new_tokens=64, batch_size=choose_gen_batch_size(), do_sample=False)
         sampled = generate_texts(
             model,
             tokenizer,
             prompts,
             max_new_tokens=64,
-            batch_size=4 if torch.cuda.is_available() else 1,
+            batch_size=choose_gen_batch_size(),
             do_sample=True,
             temperature=0.8,
             top_k=40,
@@ -379,11 +379,18 @@ def main() -> None:
     targeted_path = args.targeted_file or (data_root / "partC_targeted.jsonl")
     heldout_path = args.heldout or (data_root / "partC_heldout.jsonl")
     report_path = args.report_file or (results_dir() / "partC_attacks.json")
-    tokenizer, victim, _ = load_pair(args)
-    cache: dict = {}
     report = load_json(report_path) or {}
     key = victim_key(args)
     block = dict(report.get(key) or {})
+    attacks = ["discoverable", "untargeted", "canary", "targeted"] if args.attack == "all" else [args.attack]
+    attacks_done = all(a in block for a in attacks)
+    ppl_done = (not heldout_path.is_file()) or ("heldout_ppl" in block)
+    if attacks_done and ppl_done:
+        LOGGER.info("skip attacks; %s already complete in %s", key, report_path)
+        return
+
+    tokenizer, victim, _ = load_pair(args)
+    cache: dict = {}
     block["victim"] = key
     block["corpus"] = corpus_path.name
     block["adapter"] = args.adapter_path or None
@@ -391,22 +398,43 @@ def main() -> None:
     if heldout_path.is_file() and "heldout_ppl" not in block:
         nll = sequence_nll(victim, tokenizer, [r["text"] for r in read_jsonl(heldout_path)], batch_size=4)
         block["heldout_ppl"] = float(torch.exp(torch.tensor(sum(nll) / max(len(nll), 1))).item())
+        report[key] = block
+        write_json(report_path, report)
 
-    attacks = ["discoverable", "untargeted", "canary", "targeted"] if args.attack == "all" else [args.attack]
     corpus = read_jsonl(corpus_path) if any(a in attacks for a in ("discoverable", "untargeted")) else []
     if "discoverable" in attacks:
-        LOGGER.info("discoverable memorization")
-        block["discoverable"] = discoverable(victim, tokenizer, unique_docs(corpus))
+        if "discoverable" in block:
+            LOGGER.info("skip discoverable")
+        else:
+            LOGGER.info("discoverable memorization")
+            block["discoverable"] = discoverable(victim, tokenizer, unique_docs(corpus))
+            report[key] = block
+            write_json(report_path, report)
     if "untargeted" in attacks:
-        LOGGER.info("untargeted extraction n=%s", args.num_samples)
-        ref = maybe_ref(args, cache)
-        block["untargeted"] = untargeted(victim, ref, tokenizer, corpus, args.num_samples, args.seed)
+        if "untargeted" in block:
+            LOGGER.info("skip untargeted")
+        else:
+            LOGGER.info("untargeted extraction n=%s", args.num_samples)
+            ref = maybe_ref(args, cache)
+            block["untargeted"] = untargeted(victim, ref, tokenizer, corpus, args.num_samples, args.seed)
+            report[key] = block
+            write_json(report_path, report)
     if "canary" in attacks:
-        LOGGER.info("canary exposure")
-        block["canary"] = canary_attack(victim, tokenizer, read_jsonl(canary_path), args.seed)
+        if "canary" in block:
+            LOGGER.info("skip canary")
+        else:
+            LOGGER.info("canary exposure")
+            block["canary"] = canary_attack(victim, tokenizer, read_jsonl(canary_path), args.seed)
+            report[key] = block
+            write_json(report_path, report)
     if "targeted" in attacks:
-        LOGGER.info("targeted PII")
-        block["targeted"] = targeted(victim, tokenizer, read_jsonl(targeted_path))
+        if "targeted" in block:
+            LOGGER.info("skip targeted")
+        else:
+            LOGGER.info("targeted PII")
+            block["targeted"] = targeted(victim, tokenizer, read_jsonl(targeted_path))
+            report[key] = block
+            write_json(report_path, report)
 
     report[key] = block
     write_json(report_path, report)

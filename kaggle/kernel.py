@@ -14,15 +14,16 @@ INPUT = Path("/kaggle/input")
 
 
 def pip_install() -> None:
+    subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "-y", "torchao"], stdout=subprocess.DEVNULL)
     pkgs = [
-        "transformers>=4.44.0",
-        "peft>=0.12.0",
-        "trl>=0.11.0",
+        "transformers>=4.44.0,<5",
+        "peft==0.14.0",
+        "trl>=0.11.0,<0.20",
         "accelerate>=0.33.0",
-        "datasets>=2.20.0",
-        "bitsandbytes>=0.43.0",
+        "datasets>=2.20.0,<4",
+        "bitsandbytes>=0.43.0,<0.46",
         "presidio-analyzer>=2.2.0",
-        "spacy>=3.7.0",
+        "spacy>=3.7.0,<3.9",
         "matplotlib>=3.8.0",
         "seaborn>=0.13.0",
         "tqdm",
@@ -31,23 +32,49 @@ def pip_install() -> None:
     subprocess.check_call([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
 
 
+def _has_src(path: Path) -> bool:
+    return (path / "src" / "peft_sweep.py").is_file()
+
+
+def _extract_tars(src: Path, dest: Path) -> None:
+    import tarfile
+
+    dest.mkdir(parents=True, exist_ok=True)
+    for item in src.iterdir():
+        if item.suffix == ".tar" or item.name.endswith(".tar.gz"):
+            print("extract", item)
+            with tarfile.open(item, "r:*") as archive:
+                archive.extractall(dest)
+        elif item.is_dir():
+            target = dest / item.name
+            if not target.exists():
+                shutil.copytree(item, target, dirs_exist_ok=True)
+        elif item.is_file() and item.name not in {"dataset-metadata.json"}:
+            shutil.copy2(item, dest / item.name)
+
+
 def find_bundle() -> Path:
     env = os.environ.get("A1_ROOT")
-    if env and (Path(env) / "src" / "peft_sweep.py").is_file():
+    if env and _has_src(Path(env)):
         return Path(env)
-    if (WORKING / "src" / "peft_sweep.py").is_file():
-        return WORKING
+    candidates = []
+    if WORKING.is_dir():
+        candidates.append(WORKING)
     if INPUT.is_dir():
         for child in sorted(INPUT.iterdir()):
-            if (child / "src" / "peft_sweep.py").is_file():
-                return child
-            nested = child / "A1"
-            if (nested / "src" / "peft_sweep.py").is_file():
-                return nested
+            print("kaggle input", child, "contents", [p.name for p in child.iterdir()][:30])
+            candidates.append(child)
+            unpacked = WORKING / "bundle"
+            _extract_tars(child, unpacked)
+            candidates.append(unpacked)
     here = Path(__file__).resolve()
-    for parent in here.parents:
-        if (parent / "src" / "peft_sweep.py").is_file():
-            return parent
+    candidates.extend(here.parents)
+    for path in candidates:
+        if _has_src(path):
+            return path
+        for match in path.rglob("peft_sweep.py"):
+            if match.parent.name == "src":
+                return match.parent.parent
     raise FileNotFoundError("could not locate src/peft_sweep.py")
 
 
