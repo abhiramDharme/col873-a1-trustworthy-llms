@@ -1,0 +1,15 @@
+{
+  "id": "abhiramdharme/col873-a1-trustworthy-llms",
+  "title": "COL873 A1 Trustworthy LLMs",
+  "code_file": "kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": ["abhiramdharme/col873-a1-bundle"],
+  "keywords": ["nlp", "gpu"],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

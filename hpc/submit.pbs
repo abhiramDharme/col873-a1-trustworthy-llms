@@ -1,0 +1,29 @@
+#!/bin/bash
+# IITD HPC fallback (Skylake V100). Job name is required to be `default`.
+#PBS -N default
+#PBS -P vision.cse.spons
+#PBS -q standard
+#PBS -l select=1:ncpus=8:ngpus=1:mem=32gb:centos=skylake
+#PBS -l walltime=48:00:00
+#PBS -m n
+
+set -euo pipefail
+cd "${PBS_O_WORKDIR:-$HOME/COL873-A1}"
+echo "host=$(hostname) job=${PBS_JOBID:-local} date=$(date -Is)"
+source ~/.bashrc || true
+module load apps/anaconda/3EnvCreation 2>/dev/null || module load apps/anaconda/3 || true
+ENV="${A1_CONDA_ENV:-/scratch/cse/dual/cs5221139/envs/col873_a1}"
+if [[ -f "$ENV/bin/activate" ]]; then
+  # shellcheck disable=SC1090
+  source "$ENV/bin/activate"
+elif command -v conda >/dev/null 2>&1; then
+  conda activate "$ENV" 2>/dev/null || source activate "$ENV"
+fi
+export A1_ROOT="${A1_ROOT:-$PWD}"
+export A1_DATA="${A1_DATA:-$PWD/data}"
+export A1_OUT="${A1_OUT:-/scratch/cse/dual/cs5221139/col873_a1}"
+export HF_HOME="${HF_HOME:-$A1_OUT/.hf}"
+export PYTHONUNBUFFERED=1
+mkdir -p "$A1_OUT"
+nvidia-smi || true
+bash "$A1_ROOT/run_all.sh"
