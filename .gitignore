@@ -19,3 +19,7 @@ proxyAuth.txt
 trainer_state/
 .ipynb_checkpoints/
 pbs.*.pbshpc.*
+report/*.aux
+report/*.log
+report/*.out
+cs5221139.zip

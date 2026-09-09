@@ -63,14 +63,14 @@ def build_args() -> argparse.Namespace:
     p.add_argument("--model", default=SANITIZER_MODEL)
     p.add_argument("--train_file", type=Path, default=None)
     p.add_argument("--val_file", type=Path, default=None)
-    p.add_argument("--target_modules", required=True)
-    p.add_argument("--lora_r", type=int, required=True)
-    p.add_argument("--lora_alpha", type=int, required=True)
+    p.add_argument("--target_modules", default="")
+    p.add_argument("--lora_r", type=int, default=0)
+    p.add_argument("--lora_alpha", type=int, default=0)
     p.add_argument("--lora_dropout", type=float, default=0.05)
     p.add_argument("--quant", choices=["none", "4bit"], default="none")
     p.add_argument("--seed", type=int, default=DEFAULT_SEED)
-    p.add_argument("--run_id", required=True)
-    p.add_argument("--output_dir", type=Path, required=True)
+    p.add_argument("--run_id", default="")
+    p.add_argument("--output_dir", type=Path, default=None)
     p.add_argument("--results_csv", type=Path, default=None)
     p.add_argument("--epochs", type=int, default=SANITIZER_EPOCHS)
     p.add_argument("--lr", type=float, default=SANITIZER_LR)
@@ -174,6 +174,8 @@ def main() -> None:
     if args.plot_only:
         plot_sweep(results_csv, fig_path)
         return
+    if not args.target_modules or not args.run_id or args.output_dir is None or args.lora_r <= 0:
+        raise SystemExit("training requires --target_modules --lora_r --lora_alpha --run_id --output_dir")
 
     seed_everything(args.seed)
     train_file = args.train_file or (data_root / "partA_train.jsonl")

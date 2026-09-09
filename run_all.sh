@@ -173,6 +173,10 @@ case "$STAGE" in
   a|A|partA) part_a ;;
   b|B|partB) part_b ;;
   c|C|partC) part_c ;;
+  bc|BC|partBC)
+    part_b
+    part_c
+    ;;
   all)
     part_a
     part_b

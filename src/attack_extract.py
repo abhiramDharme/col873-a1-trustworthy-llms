@@ -328,6 +328,36 @@ def targeted(model, tokenizer, rows: list[dict]) -> dict:
     }
 
 
+_SPEC_ATTACK_KEYS = (
+    "victim",
+    "corpus",
+    "heldout_ppl",
+    "discoverable",
+    "untargeted",
+    "canary",
+    "targeted",
+)
+
+
+def write_attack_report(path: Path, report: dict) -> None:
+    """Keep per-victim blocks and also mirror V-raw at the top level for the handout schema."""
+    victims: dict = {}
+    for name, block in report.items():
+        if name in _SPEC_ATTACK_KEYS:
+            continue
+        if isinstance(block, dict) and (
+            "discoverable" in block or "heldout_ppl" in block or "canary" in block or "victim" in block
+        ):
+            victims[name] = block
+    payload = dict(victims)
+    primary = victims.get("victim_raw")
+    if isinstance(primary, dict):
+        for key in _SPEC_ATTACK_KEYS:
+            if key in primary:
+                payload[key] = primary[key]
+    write_json(path, payload)
+
+
 def plot_exposure(report: dict, path: Path) -> None:
     fig, ax = plt.subplots(figsize=(5.6, 3.6))
     for name, style in (("victim_raw", "-o"), ("victim_san", "-s"), ("pretrained", ":^")):
@@ -393,13 +423,15 @@ def main() -> None:
     cache: dict = {}
     block["victim"] = key
     block["corpus"] = corpus_path.name
-    block["adapter"] = args.adapter_path or None
+    block["adapter"] = None
+    if args.adapter_path:
+        block["adapter"] = f"adapters/{Path(args.adapter_path).name}"
 
     if heldout_path.is_file() and "heldout_ppl" not in block:
         nll = sequence_nll(victim, tokenizer, [r["text"] for r in read_jsonl(heldout_path)], batch_size=4)
         block["heldout_ppl"] = float(torch.exp(torch.tensor(sum(nll) / max(len(nll), 1))).item())
         report[key] = block
-        write_json(report_path, report)
+        write_attack_report(report_path, report)
 
     corpus = read_jsonl(corpus_path) if any(a in attacks for a in ("discoverable", "untargeted")) else []
     if "discoverable" in attacks:
@@ -409,7 +441,7 @@ def main() -> None:
             LOGGER.info("discoverable memorization")
             block["discoverable"] = discoverable(victim, tokenizer, unique_docs(corpus))
             report[key] = block
-            write_json(report_path, report)
+            write_attack_report(report_path, report)
     if "untargeted" in attacks:
         if "untargeted" in block:
             LOGGER.info("skip untargeted")
@@ -418,7 +450,7 @@ def main() -> None:
             ref = maybe_ref(args, cache)
             block["untargeted"] = untargeted(victim, ref, tokenizer, corpus, args.num_samples, args.seed)
             report[key] = block
-            write_json(report_path, report)
+            write_attack_report(report_path, report)
     if "canary" in attacks:
         if "canary" in block:
             LOGGER.info("skip canary")
@@ -426,7 +458,7 @@ def main() -> None:
             LOGGER.info("canary exposure")
             block["canary"] = canary_attack(victim, tokenizer, read_jsonl(canary_path), args.seed)
             report[key] = block
-            write_json(report_path, report)
+            write_attack_report(report_path, report)
     if "targeted" in attacks:
         if "targeted" in block:
             LOGGER.info("skip targeted")
@@ -434,10 +466,10 @@ def main() -> None:
             LOGGER.info("targeted PII")
             block["targeted"] = targeted(victim, tokenizer, read_jsonl(targeted_path))
             report[key] = block
-            write_json(report_path, report)
+            write_attack_report(report_path, report)
 
     report[key] = block
-    write_json(report_path, report)
+    write_attack_report(report_path, report)
     plot_path = args.plot_path or (results_dir() / "partC_exposure.png")
     plot_exposure(report, plot_path)
     LOGGER.info("wrote %s key=%s", report_path, key)

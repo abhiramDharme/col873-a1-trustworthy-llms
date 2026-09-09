@@ -14,7 +14,7 @@ Use the frozen JSONL under `data/` (or `trustworthy_llms_a1_bundle/data/`). `run
 |---|---|
 | MacBook Air M3, 8 GB | Fits tokenizer/metrics/regex only. 1.5B LoRA training will page to death. bitsandbytes QLoRA is CUDA-only. |
 | Kaggle GPU (Tesla T4, 16 GB) | Intended run. Enable GPU + Internet. One 12 h session is tight but feasible with LoRA rank as specified, `fp16`, gradient checkpointing, and effective batch 16. |
-| IITD HPC Skylake V100, 32 GB | Fallback. `hpc/submit.pbs` requests `centos=skylake`, project `vision.cse.spons`, job name `default`. |
+| IITD HPC `scai_q` A100 80 GB | Machine used for the reported numbers. `hpc/submit.pbs` requests project `vision.cse.spons`, job name `default`. |
 
 Hyperparameters are identical across machines (`src/lib/constants.py`). Only batch size and gradient accumulation change with GPU memory.
 

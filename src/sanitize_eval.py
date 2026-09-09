@@ -172,7 +172,7 @@ def main() -> None:
     summary.update(
         {
             "system": args.system,
-            "adapter": args.adapter_path or None,
+            "adapter": (Path(args.adapter_path).name and f"adapters/{Path(args.adapter_path).name}") or None,
             "test_set": test_file.name,
             "n": len(rows),
         }

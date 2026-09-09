@@ -201,10 +201,13 @@ def aggregate_reports(rows: list[dict], top_k_classes: int = 10) -> dict:
     leak = sum(r["leak_rate"] for r in rows) / n if n else 0.0
     over = sum(r["over_masking_rate"] for r in rows) / n if n else 0.0
     well = sum(1.0 for r in rows if r["well_formed"]) / n if n else 0.0
+    exact = _sum_prf("exact")
+    overlap = _sum_prf("overlap")
     return {
         "n": n,
-        "exact": _sum_prf("exact"),
-        "overlap_iou50": _sum_prf("overlap"),
+        "exact": exact,
+        "overlap_iou50": overlap,
+        "per_class": exact["per_class"],
         "leak_rate": leak,
         "over_masking_rate": over,
         "well_formed_rate": well,

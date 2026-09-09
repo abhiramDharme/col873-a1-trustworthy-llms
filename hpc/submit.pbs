@@ -32,6 +32,8 @@ export TRANSFORMERS_OFFLINE=1
 export PYTHONUNBUFFERED=1
 export TOKENIZERS_PARALLELISM=false
 export OMP_NUM_THREADS=1
+# Part A adapters are already on disk; skip the sweep and finish B+C.
+export STAGE="${STAGE:-bc}"
 unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
 export no_proxy="*"
 

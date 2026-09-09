@@ -38,11 +38,49 @@ _PRESIDIO_TO_OOD = {
 }
 
 
+def _offline_spacy_http() -> None:
+    """SpaCy/Presidio probe GitHub for model compatibility; HPC compute has no DNS."""
+    import requests
+
+    if getattr(requests.get, "_a1_offline", False):
+        return
+
+    class _Dummy:
+        status_code = 200
+        text = "{}"
+        content = b"{}"
+
+        def json(self):
+            return {}
+
+        def raise_for_status(self):
+            return None
+
+    real_get = requests.get
+
+    def fake_get(url, *args, **kwargs):
+        text = str(url)
+        if "githubusercontent.com" in text or "compatibility.json" in text:
+            return _Dummy()
+        return real_get(url, *args, **kwargs)
+
+    fake_get._a1_offline = True  # type: ignore[attr-defined]
+    requests.get = fake_get
+
+
 class PresidioSanitizer:
     def __init__(self, ood: bool = False):
+        _offline_spacy_http()
         from presidio_analyzer import AnalyzerEngine
+        from presidio_analyzer.nlp_engine import NlpEngineProvider
 
-        self.engine = AnalyzerEngine()
+        provider = NlpEngineProvider(
+            nlp_configuration={
+                "nlp_engine_name": "spacy",
+                "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}],
+            }
+        )
+        self.engine = AnalyzerEngine(nlp_engine=provider.create_engine(), supported_languages=["en"])
         self.mapping = _PRESIDIO_TO_OOD if ood else _PRESIDIO_TO_300K
 
     def spans(self, text: str) -> list[Span]:
