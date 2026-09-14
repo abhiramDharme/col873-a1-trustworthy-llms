@@ -46,7 +46,7 @@ python src/peft_sweep.py \
   --target_modules q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj \
   --lora_r 32 --lora_alpha 64 --lora_dropout 0.05 \
   --quant none --seed 42 \
-  --run_id A5 --output_dir adapters/A5 --results_csv results/partA_sweep.csv
+  --run_id A4 --output_dir adapters/A4 --results_csv results/partA_sweep.csv
 
 python src/sanitize_eval.py \
   --base_model Qwen/Qwen2.5-1.5B-Instruct \

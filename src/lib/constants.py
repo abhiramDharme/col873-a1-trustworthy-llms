@@ -88,14 +88,14 @@ SWEEP: dict[str, dict] = {
         "method": "LoRA",
         "target_modules": list(VICTIM_TARGET_MODULES),
         "lora_r": 32,
-        "lora_alpha": 16,
+        "lora_alpha": 64,
         "quant": "none",
     },
     "A5": {
         "method": "LoRA",
         "target_modules": list(VICTIM_TARGET_MODULES),
         "lora_r": 32,
-        "lora_alpha": 64,
+        "lora_alpha": 16,
         "quant": "none",
     },
     "A6": {

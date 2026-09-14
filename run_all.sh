@@ -48,8 +48,8 @@ part_a() {
   run_cfg A1 "$MODULES_ATTN" 8 16 none
   run_cfg A2 "$MODULES_ATTN_FULL" 8 16 none
   run_cfg A3 "$MODULES_ALL" 8 16 none
-  run_cfg A4 "$MODULES_ALL" 32 16 none
-  run_cfg A5 "$MODULES_ALL" 32 64 none
+  run_cfg A4 "$MODULES_ALL" 32 64 none
+  run_cfg A5 "$MODULES_ALL" 32 16 none
   run_cfg A6 "$MODULES_ALL" 32 64 4bit
   "$PYTHON" "$ROOT/src/peft_sweep.py" --plot_only \
     --results_csv "$RESULTS/partA_sweep.csv" \

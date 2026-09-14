@@ -44,7 +44,7 @@ Lowest validation leak, then highest exact entity F1, then fewer trainable param
 
 \begin{table}[t]
 \centering
-\caption{Part~A validation sweep (A100, seed 42, 2 epochs). A2 is leak-first; A5 is the F1 peak.}
+\caption{Part~A validation sweep (A100, seed 42, 2 epochs). A2 is leak-first; A4 is the F1 peak.}
 \label{tab:sweep}
 \scriptsize
 \setlength{\tabcolsep}{3.0pt}
@@ -55,8 +55,8 @@ ID & Modules & $r$ & $\alpha$ & Trainable & Peak GB & Wall (s) & F1 & Leak \\
 A1 & $q,v$ & 8 & 16 & 1.09M (0.071\%) & 50.57 & 1361 & 0.897 & 0.0306 \\
 A2 & attn & 8 & 16 & 2.18M (0.141\%) & 53.44 & 1461 & 0.917 & \textbf{0.0274} \\
 A3 & attn+MLP & 8 & 16 & 9.23M (0.595\%) & 64.67 & 1932 & 0.940 & 0.0291 \\
-A4 & attn+MLP & 32 & 16 & 36.9M (2.34\%) & 65.20 & 1943 & 0.937 & 0.0292 \\
-A5 & attn+MLP & 32 & 64 & 36.9M (2.34\%) & 65.20 & 1948 & \textbf{0.945} & 0.0291 \\
+A4 & attn+MLP & 32 & 64 & 36.9M (2.34\%) & 65.20 & 1948 & \textbf{0.945} & 0.0291 \\
+A5 & attn+MLP & 32 & 16 & 36.9M (2.34\%) & 65.20 & 1943 & 0.937 & 0.0292 \\
 A6 & attn+MLP 4b & 32 & 64 & 36.9M (3.99\%) & 24.43 & 3496 & 0.934 & 0.0305 \\
 \bottomrule
 \end{tabular}
@@ -65,18 +65,18 @@ A6 & attn+MLP 4b & 32 & 64 & 36.9M (3.99\%) & 24.43 & 3496 & 0.934 & 0.0305 \\
 \begin{figure}[t]
 \centering
 \includegraphics[width=\textwidth]{figures/partA_fig.pdf}
-\caption{Left: exact val F1 vs.\ trainable percentage (log $x$). Right: peak GPU memory vs.\ F1. Placement (A1$\to$A3) moves the curve; rank (A3$\to$A4) does not. A6 is the memory outlier.}
+\caption{Left: exact val F1 vs.\ trainable percentage (log $x$). Right: peak GPU memory vs.\ F1. Placement (A1$\to$A3) moves the curve; rank (A3$\to$A5) does not. A6 is the memory outlier.}
 \label{fig:sweep}
 \end{figure}
 
 \paragraph{Placement vs.\ rank vs.\ $\alpha$.}
-A1$\to$A2 (add $k,o$) costs $+1.09$M parameters and $+100$\,s for $+2.0$ F1 points and the best leak. A2$\to$A3 (add MLP) is the remaining F1 step ($+2.3$ points) at $4.2{\times}$ trainable weights, $+11$\,GB, and $+8$ minutes; leak rises slightly. A3$\to$A4 ($r{:}8\to 32$, $\alpha$ fixed) is a dead axis: F1 drops $0.3$ points at $4{\times}$ rank. A4$\to$A5 ($\alpha{:}16\to 64$) recovers a little F1 ($0.937\to 0.945$) at identical memory and wall-clock. F1-per-parameter ranking is A1 $\gg$ A2 $\gg$ A3 $\gg$ A4/A5; the curve flattens once MLP is adapted.
+A1$\to$A2 (add $k,o$) costs $+1.09$M parameters and $+100$\,s for $+2.0$ F1 points and the best leak. A2$\to$A3 (add MLP) is the remaining F1 step ($+2.3$ points) at $4.2{\times}$ trainable weights, $+11$\,GB, and $+8$ minutes; leak rises slightly. A3$\to$A5 ($r{:}8\to 32$, $\alpha$ fixed) is a dead axis: F1 drops $0.3$ points at $4{\times}$ rank. A5$\to$A4 ($\alpha{:}16\to 64$) recovers a little F1 ($0.937\to 0.945$) at identical memory and wall-clock. F1-per-parameter ranking is A1 $\gg$ A2 $\gg$ A3 $\gg$ A4/A5; the curve flattens once MLP is adapted.
 
 \paragraph{QLoRA.}
-A6 matches A5 on a 4-bit base. Peak memory falls from 65.2\,GB to 24.4\,GB ($\sim$2.7$\times$). Wall-clock goes the other way: 3496\,s vs 1948\,s (0.72 vs 1.28 it/s). F1 0.934 vs 0.945; leak 0.0305 vs 0.0291. QLoRA cost a little accuracy and did not save time; it did save memory.
+A6 matches A4 on a 4-bit base. Peak memory falls from 65.2\,GB to 24.4\,GB ($\sim$2.7$\times$). Wall-clock goes the other way: 3496\,s vs 1948\,s (0.72 vs 1.28 it/s). F1 0.934 vs 0.945; leak 0.0305 vs 0.0291. QLoRA cost a little accuracy and did not save time; it did save memory.
 
 \paragraph{Choice.}
-A5 is the F1 peak; A2 is the leak minimum with less than a quarter of A5's trainable mass. We copy A2 as \texttt{best\_sanitizer} for Parts~B and~C.
+A4 is the F1 peak; A2 is the leak minimum with less than a quarter of A4's trainable mass. We copy A2 as \texttt{best\_sanitizer} for Parts~B and~C.
 
 \section{Part B --- Sanitizer evaluation}
 \label{sec:b}
@@ -179,7 +179,7 @@ A2 still leaks $\sim$3\% of gold values, concentrated in short closed-class toke
 
 Students consulted: None.
 
-LLMs/tools: Cursor (Grok) for boilerplate, environment wiring, and debugging. Training, metrics, and numbers are from the HPC A100 run described above.
+LLMs/tools: a coding assistant for boilerplate, environment wiring, and debugging. Training, metrics, and numbers are from the HPC A100 run described above.
 
 \appendix
 \section{Hyperparameters and prompt}
