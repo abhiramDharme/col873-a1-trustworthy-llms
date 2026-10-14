@@ -117,6 +117,9 @@ def main() -> None:
     train_ds = CausalTextDataset(texts, tokenizer, args.max_seq_len)
     LOGGER.info("victim corpus rows=%s tokens=%s", len(train_ds), train_ds.token_count())
 
+    from lib.fetch_adapters import ensure_local_adapter
+
+    ensure_local_adapter(args.output_dir)
     skip_train = args.skip_train or adapter_is_complete(args.output_dir)
     resume_ckpt = latest_checkpoint(args.output_dir)
 

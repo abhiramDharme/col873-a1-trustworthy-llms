@@ -2,7 +2,9 @@
 
 Qwen2.5-1.5B-Instruct is adapted with LoRA/QLoRA as a PII sanitizer. The selected adapter is then scored as a sanitization system (span recovery, leak rate, over-masking) against regex and Presidio, and used to build a sanitized victim corpus. Two Qwen2.5-0.5B LoRA victims (raw vs sanitized) plus the untuned base model are attacked with discoverable memorization, untargeted membership ranking, canary exposure, and targeted PII prompting.
 
-The four CLI entry points required by the handout live in `src/`. Shared code is in `src/lib/`. Do not train on `partC_canaries.jsonl`. Do not publish adapters or extraction dumps.
+The four CLI entry points required by the handout live in `src/`. Shared code is in `src/lib/`.
+
+If `adapters/<name>` has no weights, the loader downloads that folder from the public Drive: https://drive.google.com/drive/folders/17dQg4IVXkHNKDPLkotSCd_WeagXzKW1t?usp=sharing. Names: `A1`–`A6`, `best_sanitizer`, `victim_raw`, `victim_san`. Base models `Qwen/Qwen2.5-1.5B-Instruct` and `Qwen/Qwen2.5-0.5B` still come from Hugging Face.
 
 ## Data
 
@@ -67,6 +69,7 @@ python src/attack_extract.py \
   --victim_model Qwen/Qwen2.5-0.5B --adapter_path adapters/victim_raw \
   --ref_model Qwen/Qwen2.5-0.5B \
   --corpus data/partC_corpus_raw.jsonl --canaries data/partC_canaries.jsonl \
+  --heldout data/partC_heldout.jsonl \
   --targeted_file data/partC_targeted.jsonl \
   --attack all --num_samples 5000 --seed 42 \
   --report_file results/partC_attacks.json

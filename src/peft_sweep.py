@@ -190,6 +190,9 @@ def main() -> None:
     val_ds = CompletionSFTDataset(val_rows, tokenizer, args.max_seq_len)
     LOGGER.info("tokenized train=%s val=%s truncated=%s", len(train_ds), len(val_ds), train_ds.n_truncated)
 
+    from lib.fetch_adapters import ensure_local_adapter
+
+    ensure_local_adapter(args.output_dir)
     adapter_ok = adapter_is_complete(args.output_dir)
     resume_ckpt = latest_checkpoint(args.output_dir)
     skip_train = args.skip_train or adapter_ok

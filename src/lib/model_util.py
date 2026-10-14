@@ -234,9 +234,12 @@ def attach_lora(model, target_modules: list[str], r: int, alpha: int, quant: str
 
 
 def load_with_adapter(model_name: str, adapter_path: str | None, quant: str = "none"):
+    from .fetch_adapters import ensure_local_adapter
+
     model = load_causal_lm(model_name, quant=quant)
-    if adapter_path:
-        model = PeftModel.from_pretrained(model, adapter_path)
+    local = ensure_local_adapter(adapter_path)
+    if local:
+        model = PeftModel.from_pretrained(model, local)
     model.eval()
     return model
 

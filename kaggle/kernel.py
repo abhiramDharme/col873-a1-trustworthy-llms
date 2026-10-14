@@ -24,6 +24,7 @@ def pip_install() -> None:
         "bitsandbytes>=0.43.0,<0.46",
         "presidio-analyzer>=2.2.0",
         "spacy>=3.7.0,<3.9",
+        "gdown>=5.2.0",
         "matplotlib>=3.8.0",
         "seaborn>=0.13.0",
         "tqdm",
