@@ -11,7 +11,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import torch
-from transformers import Trainer
+from transformers import Trainer, TrainingArguments
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
